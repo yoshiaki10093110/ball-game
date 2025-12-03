@@ -392,13 +392,47 @@ function createNewBall(x, y, typeIndex, isSpawning) {
 
 function mouseClicked() {
   if (gameState === "TITLE") {
-    if (isMouseOver(btnStart)) { resetGame(); gameState = "GAME"; }
-    if (isMouseOver(btnHowTo)) gameState = "HOWTO";
+    if (isMouseOver(btnStart)) { 
+      resetGame(); 
+      gameState = "GAME";
+      
+      // ★変更点2：0.2秒後にボール投下を許可する
+      setTimeout(() => { canDrop = true; }, 200); 
+      
+      return; 
+    }
+    if (isMouseOver(btnHowTo)) {
+      gameState = "HOWTO";
+      return; 
+    }
   } else if (gameState === "HOWTO") {
-    if (isMouseOver(btnBack)) gameState = "TITLE";
-  } else if (gameState === "GAME") {
-    if (canDrop && mouseX < gameAreaWidth) dropBall();
-  } else if (gameState === "GAMEOVER") gameState = "TITLE";
+    if (isMouseOver(btnBack)) {
+      gameState = "TITLE";
+      return; 
+    }
+  } 
+  
+  // ★重要修正点：GAMEステートかつ投下エリア内のクリックのみ、ボール投下を許可
+  if (gameState === "GAME") { // <-- ステートの確認を追加
+    if (canDrop && mouseX < gameAreaWidth) {
+      dropBall();
+      return; // 投下処理後、ここで処理を終了
+    }
+  } 
+  
+  // ゲームオーバー画面でのクリックはタイトルへ遷移
+  if (gameState === "GAMEOVER") {
+    gameState = "TITLE";
+  }
+}
+
+// touchStarted 関数はそのまま残してください
+function touchStarted() {
+  // mouseClicked と同じロジックを呼び出す
+  if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+    mouseClicked();
+  }
+  return false;
 }
 
 function dropBall() {
@@ -411,13 +445,18 @@ function dropBall() {
   // 次のボール
   nextBallType = floor(random(0, 4));
   
+  // ★変更点3：次の投下可能までの時間を確認 (800ms)
   setTimeout(() => { canDrop = true; }, 800);
 }
 
 function resetGame() {
   for (let b of balls) World.remove(world, b);
-  balls = []; score = 0; nextBallType = floor(random(0, 4)); canDrop = true;
-  // ハイスコアはリセットしない
+  balls = []; 
+  score = 0; 
+  nextBallType = floor(random(0, 4)); 
+  
+  // ★変更点1：初期状態では投下不可(false)にする
+  canDrop = false; 
 }
 
 function initButtons() {
@@ -436,3 +475,20 @@ function drawButton(btn) {
 function isMouseOver(btn) {
   return mouseX>btn.x-btn.w/2 && mouseX<btn.x+btn.w/2 && mouseY>btn.y-btn.h/2 && mouseY<btn.y+btn.h/2;
 }
+
+// --- タッチイベントの追加 ---
+// スマートフォンでのタッチ操作に対応するために touchStarted を実装
+function touchStarted() {
+  // mouseClicked と同じロジックを呼び出す
+  if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+    mouseClicked();
+  }
+  
+  // スマホでブラウザのスクロールを防ぐため、必ず false を返す
+  return false;
+}
+
+// 既存の mouseClicked 関数（ロジックに変更は不要です）
+// function mouseClicked() {
+//   // ... 既存のロジック
+// }
