@@ -18,10 +18,10 @@ let canDrop = true;
 let gameAreaWidth;
 
 // --- ゲーム設定 ---
-const CANVAS_WIDTH = 600;
+const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 640; 
 const WALL_THICKNESS = 20;
-const GAME_AREA_WIDTH_SETTING = 360; 
+const GAME_AREA_WIDTH_SETTING = 500; 
 
 // ゲームオーバーライン
 const DEAD_LINE_Y = 130;
