@@ -2,14 +2,11 @@ body {
   margin: 0;
   padding: 0;
   background-color: #f0f0f0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  overflow: hidden;
+  overflow: hidden; /* スクロールバーを消す */
+  touch-action: none; /* スマホでの誤操作（ズームなど）を防ぐ */
   font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
 }
 
 canvas {
-  box-shadow: 0 0 20px rgba(0,0,0,0.1);
+  display: block;
 }
