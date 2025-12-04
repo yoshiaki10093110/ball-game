@@ -2,7 +2,6 @@
 const Engine = Matter.Engine;
 const World = Matter.World;
 const Bodies = Matter.Bodies;
-const Body = Matter.Body;
 const Events = Matter.Events;
 
 // --- グローバル変数 ---
@@ -12,73 +11,46 @@ let balls = [];
 let walls = [];
 let nextBallType = 0;
 let score = 0;
+// ★追加：ハイスコア用変数
 let highScore = 0; 
-let gameState = "TITLE"; 
-let canDrop = false;
+let gameState = "TITLE"; // TITLE, HOWTO, GAME, GAMEOVER
+let canDrop = true;
+let gameAreaWidth;
 
-// 画面サイズ管理用
-let gameAreaWidth; // 箱の幅
-let wallThickness = 20;
-let groundY; 
-let deadLineY = 130;
+// --- ゲーム設定 ---
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 640; 
+const WALL_THICKNESS = 20;
+const GAME_AREA_WIDTH_SETTING = 500; 
 
-// --- ボールデータ ---
-// ここでボールの見た目、大きさ、重さなどを設定しています
+// ゲームオーバーライン
+const DEAD_LINE_Y = 130;
+
+// --- ボールデータと模様描画関数 ---
+// --- ボールデータと模様描画関数 ---
 const BALL_TYPES = [
-  // ==========================================
-  // 【0: ピンポン玉】 (一番小さい)
-  // ==========================================
-  { 
-    r: 15,              // 半径
-    color: "#FF8C00",   // 色（オレンジ）
-    label: "PingPong",  // 名前
-    score: 1,           // 結合時のスコア
-    density: 1.0,       // 密度（重さの基準）
-    stroke: true        // 黒いフチをつける
-  },
+  // ★変更点：ピンポン玉の色を「オレンジ」に変更し、stroke: true (黒線で囲む) を追加
+  // 0: ピンポン (r: 15, 密度: 1.0 - 基準)
+  { r: 15, color: "#FF8C00", label: "PingPong", score: 1, density: 1.0, stroke: true },
   
-  // ==========================================
-  // 【1: ゴルフボール】 (小さいが少し重い)
-  // ==========================================
-  { 
-    r: 20, 
-    color: "#FFFFFF", 
-    label: "Golf", 
-    score: 3, 
-    density: 2.0,       // 小さいけど重く設定
-    stroke: true,
-    // 表面のボコボコ（ディンプル）を描画する関数
-    drawFunc: (r) => {
+  // 1: ゴルフ (r: 20, 密度: 2.0 - サイズの割に重い)
+  { r: 20, color: "#FFFFFF", label: "Golf", score: 3, density: 2.0, stroke: true, drawFunc: (r) => {
       fill(200); noStroke();
-      // 8x8の格子状に小さな円を描いてディンプルを表現
       for(let i=0; i<8; i++) {
         for(let j=0; j<8; j++) {
           circle(map(i,0,7,-r*0.7,r*0.7), map(j,0,7,-r*0.7,r*0.7), r*0.1);
         }
       }
-    }
-  },
+  }},
   
-  // ==========================================
-  // 【2: テニスボール】
-  // ==========================================
-  { 
-    r: 28, 
-    color: "#DFFF00", // 蛍光イエロー
-    label: "Tennis", 
-    score: 6, 
-    density: 1.5,
-    // 白い曲線を描画
-    drawFunc: (r) => {
+  // 2: テニス (r: 28, 密度: 1.5 - 中程度)
+  { r: 28, color: "#DFFF00", label: "Tennis", score: 6, density: 1.5, drawFunc: (r) => {
       noFill(); stroke(255); strokeWeight(r*0.1);
-      arc(-r*0.6, 0, r*1.5, r*1.5, -PI/4, PI/4); 
+      arc(-r*0.6, 0, r*1.5, r*1.5, -PI/4, PI/4);
       arc(r*0.6, 0, r*1.5, r*1.5, PI*0.75, PI*1.25);
-    }
-  },
+  }},
   
-  // ==========================================
-  // 【3: 野球ボール】
-  // ==========================================
+  // 3: 野球 (r: 35, 密度: 1.8)
   { r: 35, color: "#F8F8FF", label: "Base", score: 10, density: 1.8, stroke: true, drawFunc: (r) => {
       noFill(); stroke("#FF0000"); strokeWeight(r*0.08);
       arc(-r*0.5, 0, r*1.3, r*1.8, -PI/3, PI/3);
@@ -92,196 +64,88 @@ const BALL_TYPES = [
       }
   }},
   
-  // ==========================================
-  // 【4: ビリヤードボール (8番)】
-  // ==========================================
-  { 
-    r: 45, 
-    color: "#222222", // 黒
-    label: "Billiard", 
-    score: 15, 
-    density: 2.5,     // かなり重く設定
-    // 白い円の中に数字の「8」を描く
-    drawFunc: (r) => {
-      fill(255); noStroke(); circle(0,0, r*0.8); 
-      fill(0); textAlign(CENTER, CENTER); textSize(r*0.6); 
-      textStyle(BOLD); text("8", 0, 0); textStyle(NORMAL);
-    }
-  },
+  // 4: ビリヤード (r: 45, 密度: 2.5 - 非常に高密度)
+  { r: 45, color: "#222222", label: "Billiard", score: 15, density: 2.5, drawFunc: (r) => {
+      fill(255); noStroke();
+      circle(0,0, r*0.8);
+      fill(0); textAlign(CENTER, CENTER); textSize(r*0.6); textStyle(BOLD);
+      text("8", 0, 0); textStyle(NORMAL);
+  }},
   
-  // ==========================================
-  // 【5: ホッケーボール】
-  // ==========================================
-  { 
-    r: 55, 
-    color: "#FF6600", // オレンジ
-    label: "Hockey", 
-    score: 21, 
-    density: 2.3,
-    // 少しランダムに窪みを描く
-    drawFunc: (r) => {
-      fill(255, 100); noStroke(); 
+  // 5: ホッケー (r: 55, 密度: 2.3)
+  { r: 55, color: "#FF6600", label: "Hockey", score: 21, density: 2.3, drawFunc: (r) => {
+      fill(255, 100); noStroke();
       for(let i=0; i<5; i++) circle(random(-r/2,r/2), random(-r/2,r/2), r*0.2);
-    }
-  },
+  }},
   
-  // ==========================================
-  // 【6: ハンドボール】
-  // ==========================================
-  { 
-    r: 68, 
-    color: "#0044FF", // 青
-    label: "Hand", 
-    score: 28, 
-    density: 1.0,
-    // パネル模様（六角形のようなライン）を描く
-    drawFunc: (r) => {
-      noFill(); stroke(255); strokeWeight(r*0.03); 
-      beginShape(); 
-      for(let i=0; i<6; i++) { 
-        let angle=TWO_PI/6*i; 
-        vertex(cos(angle)*r*0.6, sin(angle)*r*0.6); 
-        line(cos(angle)*r*0.6, sin(angle)*r*0.6, cos(angle)*r, sin(angle)*r); 
-      } 
-      endShape(CLOSE);
-    }
-  },
-  
-  // ==========================================
-  // 【7: バレーボール】
-  // ==========================================
-  { 
-    r: 80, 
-    color: "#FFD700", // 黄色ベース
-    label: "Volley", 
-    score: 36, 
-    density: 0.8,     // 大きさの割に軽い
-    // 青と白の曲線パターンを描く
-    drawFunc: (r) => {
-      noFill(); strokeWeight(r*0.05); 
-      stroke(0,0,255); arc(0, 0, r*1.8, r*1.8, 0, PI/2); 
-      stroke(255); arc(0, 0, r*1.8, r*1.8, PI/2, PI); 
-      stroke(0,0,255); arc(0, 0, r*1.8, r*1.8, PI, PI*1.5); 
-      stroke(255); arc(0, 0, r*1.8, r*1.8, PI*1.5, TWO_PI); 
-      stroke(255,255,0); line(-r,0,r,0); line(0,-r,0,r);
-    }
-  },
-  
-  // ==========================================
-  // 【8: サッカーボール】
-  // ==========================================
-  { 
-    r: 95, 
-    color: "#FFFFFF", 
-    label: "Soccer", 
-    score: 45, 
-    density: 1.2, 
-    stroke: true,
-    // 五角形の黒い模様を描く
-    drawFunc: (r) => {
-      fill(0); noStroke(); 
-      // 中央の五角形
-      beginShape(); for(let i=0;i<5;i++){vertex(cos(TWO_PI/5*i-PI/2)*r*0.3, sin(TWO_PI/5*i-PI/2)*r*0.3);} endShape(CLOSE);
-      // 周囲の五角形の一部
-      for(let i=0;i<5;i++){ 
-        let ang=TWO_PI/5*i-PI/2; 
-        let x=cos(ang)*r*0.8; let y=sin(ang)*r*0.8; 
-        beginShape(); for(let j=0;j<5;j++){vertex(x+cos(TWO_PI/5*j+ang)*r*0.2, y+sin(TWO_PI/5*j+ang)*r*0.2);} endShape(CLOSE); 
+  // 6: ハンドボール (r: 68, 密度: 1.0)
+  { r: 68, color: "#0044FF", label: "Hand", score: 28, density: 1.0, drawFunc: (r) => {
+      noFill(); stroke(255); strokeWeight(r*0.03);
+      beginShape();
+      for(let i=0; i<6; i++) {
+        let angle = TWO_PI / 6 * i;
+        vertex(cos(angle)*r*0.6, sin(angle)*r*0.6);
+        line(cos(angle)*r*0.6, sin(angle)*r*0.6, cos(angle)*r, sin(angle)*r);
       }
-    }
-  },
+      endShape(CLOSE);
+  }},
   
-  // ==========================================
-  // 【9: バスケットボール】
-  // ==========================================
-  { 
-    r: 110, 
-    color: "#FF7700", // オレンジ
-    label: "Basket", 
-    score: 55, 
-    density: 1.1, 
-    stroke: true,
-    // 黒いラインを描く
-    drawFunc: (r) => {
-      noFill(); stroke(0); strokeWeight(r*0.05); 
-      line(-r,0,r,0); line(0,-r,0,r); 
-      arc(-r*0.7, 0, r, r*1.5, -PI/3, PI/3); 
+  // 7: バレー (r: 80, 密度: 0.8 - サイズの割に軽い)
+  { r: 80, color: "#FFD700", label: "Volley", score: 36, density: 0.8, drawFunc: (r) => {
+      noFill(); strokeWeight(r*0.05);
+      stroke(0,0,255); arc(0, 0, r*1.8, r*1.8, 0, PI/2);
+      stroke(255);    arc(0, 0, r*1.8, r*1.8, PI/2, PI);
+      stroke(0,0,255); arc(0, 0, r*1.8, r*1.8, PI, PI*1.5);
+      stroke(255);    arc(0, 0, r*1.8, r*1.8, PI*1.5, TWO_PI);
+      stroke(255,255,0); line(-r,0,r,0); line(0,-r,0,r);
+  }},
+  
+  // 8: サッカー (r: 95, 密度: 1.2)
+  { r: 95, color: "#FFFFFF", label: "Soccer", score: 45, density: 1.2, stroke: true, drawFunc: (r) => {
+      fill(0); noStroke();
+      beginShape(); for(let i=0;i<5;i++){vertex(cos(TWO_PI/5*i-PI/2)*r*0.3, sin(TWO_PI/5*i-PI/2)*r*0.3);} endShape(CLOSE);
+      for(let i=0;i<5;i++){
+        let ang = TWO_PI/5*i - PI/2;
+        let x = cos(ang)*r*0.8; let y = sin(ang)*r*0.8;
+        beginShape();
+        for(let j=0;j<5;j++){vertex(x+cos(TWO_PI/5*j+ang)*r*0.2, y+sin(TWO_PI/5*j+ang)*r*0.2);}
+        endShape(CLOSE);
+      }
+  }},
+  
+  // 9: バスケ (r: 110, 密度: 1.1)
+  { r: 110, color: "#FF7700", label: "Basket", score: 55, density: 1.1, stroke: true, drawFunc: (r) => {
+      noFill(); stroke(0); strokeWeight(r*0.05);
+      line(-r,0,r,0); line(0,-r,0,r);
+      arc(-r*0.7, 0, r, r*1.5, -PI/3, PI/3);
       arc(r*0.7, 0, r, r*1.5, PI*0.66, PI*1.33);
-    }
-  },
+  }},
   
-  // ==========================================
-  // 【10: ボウリング玉】 (最大・最重量)
-  // ==========================================
-  { 
-    r: 130, 
-    color: "#3B1E56", // 紫マーブル
-    label: "Bowling", 
-    score: 66, 
-    density: 3.0,     // 非常に重い
-    // 指を入れる穴を描く
-    drawFunc: (r) => {
-      fill(100, 50, 150, 100); noStroke(); 
-      circle(r*0.3, -r*0.3, r*0.8); circle(-r*0.4, r*0.2, r); 
-      fill(20); 
-      circle(r*0.2, -r*0.3, r*0.2); 
-      circle(r*0.4, -r*0.2, r*0.2); 
+  // 10: ボウリング (r: 130, 密度: 3.0 - 最大級の重さ)
+  { r: 130, color: "#3B1E56", label: "Bowling", score: 66, density: 3.0, drawFunc: (r) => {
+      fill(100, 50, 150, 100); noStroke();
+      circle(r*0.3, -r*0.3, r*0.8); circle(-r*0.4, r*0.2, r);
+      fill(20);
+      circle(r*0.2, -r*0.3, r*0.2);
+      circle(r*0.4, -r*0.2, r*0.2);
       circle(r*0.3, -r*0.05, r*0.2);
-    }
-  }
+  }}
 ];
 
 let btnStart, btnHowTo, btnBack;
 
 function setup() {
-  createCanvas(windowWidth, windowHeight);
+  createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+  gameAreaWidth = GAME_AREA_WIDTH_SETTING;
+  textAlign(CENTER, CENTER);
   
-  highScore = int(getItem('highScore') || 0);
+  // ★変更点1：ハイスコアの読み込み
+  // ブラウザのローカルストレージからハイスコアを読み込む
+  highScore = int(getItem('highScore') || 0); 
   
-  engine = Engine.create();
-  world = engine.world;
-  Events.on(engine, 'collisionStart', handleCollisions);
-
-  calculateLayout();
-  
+  initButtons();
+  setupPhysics();
   nextBallType = floor(random(0, 4));
-}
-
-function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
-  calculateLayout();
-}
-
-// 画面サイズに応じてレイアウトを計算する関数
-function calculateLayout() {
-  let isMobile = width < 768; // スマホ判定
-
-  // 箱の幅設定
-  if (isMobile) {
-    gameAreaWidth = width * 0.95; // スマホは画面いっぱい
-    deadLineY = 180; // UIが上に来る分、デッドラインを下げる
-  } else {
-    gameAreaWidth = 480; // PCは固定幅
-    deadLineY = 130;
-  }
-  
-  groundY = height;
-
-  // ボタン位置
-  btnStart = { x: width/2, y: height/2 + 20, w: 200, h: 50, label: "スタート" };
-  btnHowTo = { x: width/2, y: height/2 + 90, w: 200, h: 50, label: "遊び方" };
-  btnBack  = { x: width/2, y: height - 80, w: 200, h: 50, label: "戻る" };
-
-  // 壁の再配置
-  if (walls.length > 0) World.remove(world, walls);
-  
-  let centerX = width / 2;
-  let ground = Bodies.rectangle(centerX, groundY, gameAreaWidth, wallThickness*2, { isStatic: true });
-  let leftWall = Bodies.rectangle(centerX - gameAreaWidth/2 - wallThickness/2, groundY/2, wallThickness, groundY, { isStatic: true });
-  let rightWall = Bodies.rectangle(centerX + gameAreaWidth/2 + wallThickness/2, groundY/2, wallThickness, groundY, { isStatic: true });
-  
-  walls = [ground, leftWall, rightWall];
-  World.add(world, walls);
 }
 
 function draw() {
@@ -300,162 +164,147 @@ function draw() {
   }
 }
 
-function drawGameScreen() {
-  // 壁の描画
-  fill(100); noStroke(); rectMode(CENTER);
-  for (let w of walls) {
-    rect(w.position.x, w.position.y, w.bounds.max.x - w.bounds.min.x, w.bounds.max.y - w.bounds.min.y);
-  }
-
-  // デッドライン
-  let centerX = width / 2;
-  stroke(255, 0, 0); strokeWeight(3);
-  drawingContext.setLineDash([10, 10]);
-  line(centerX - gameAreaWidth/2, deadLineY, centerX + gameAreaWidth/2, deadLineY);
-  drawingContext.setLineDash([]);
-
-  // ボール描画
-  for (let b of balls) {
-    drawPhysicsBall(b);
-  }
-
-  // 投下用ボール
-  if (canDrop && gameState === "GAME") {
-    let r = BALL_TYPES[nextBallType].r;
-    let minX = centerX - gameAreaWidth/2 + wallThickness + r;
-    let maxX = centerX + gameAreaWidth/2 - wallThickness - r;
-    // スマホでも操作しやすいよう、タッチ位置を制限
-    let dropX = constrain(mouseX, minX, maxX);
-    
-    stroke(200); strokeWeight(1);
-    drawingContext.setLineDash([5, 5]);
-    line(dropX, 50, dropX, height); 
-    drawingContext.setLineDash([]);
-
-    push();
-    translate(dropX, 80); 
-    drawCommonBall(nextBallType, r);
-    pop();
-  }
-
-  drawResponsiveUI();
-}
-
-// ★PCとスマホで表示位置を切り替えるUI描画関数★
-function drawResponsiveUI() {
-  let isMobile = width < 768;
-  noStroke(); fill(0);
-  
-  let nextInfo = BALL_TYPES[nextBallType];
-
-  if (!isMobile) {
-    // ================= PC用レイアウト =================
-    // スコア: 左上
-    textAlign(LEFT, TOP);
-    textSize(24); text("SCORE: " + score, 40, 40);
-    textSize(16); text("HIGH SCORE: " + highScore, 40, 70);
-
-    // NEXTボール: 右上
-    textAlign(RIGHT, TOP);
-    textSize(24); text("NEXT", width - 40, 40);
-    push();
-    translate(width - 60, 100);
-    drawCommonBall(nextBallType, nextInfo.r * 0.8);
-    pop();
-    textSize(14); text(nextInfo.label, width - 40, 150);
-
-    // 進化順リスト: 右下
-    textAlign(RIGHT, BOTTOM);
-    textSize(16); text("進化順", width - 40, height - 30);
-    
-    let startX = width - 40;
-    let startY = height - 60;
-    for(let i=0; i<BALL_TYPES.length; i++) {
-        let bx = startX - 20;
-        let by = startY - i * 35;
-        push(); translate(bx, by); drawCommonBall(i, 12); pop();
-        textAlign(RIGHT, CENTER); textSize(12); fill(0);
-        text(BALL_TYPES[i].label, bx - 20, by);
-    }
-
-  } else {
-    // ================= スマホ用レイアウト =================
-    // スコア: 画面上部・中央
-    textAlign(CENTER, TOP);
-    textSize(24); text(score, width/2, 40);
-    textSize(12); text("HI: " + highScore, width/2, 70);
-
-    // NEXTボール: 右上（少し小さめ）
-    textAlign(RIGHT, TOP);
-    textSize(14); text("NEXT", width - 20, 20);
-    push();
-    translate(width - 40, 60);
-    drawCommonBall(nextBallType, 20); 
-    pop();
-
-    // 進化順リスト: 左上（コンパクトに）
-    textAlign(LEFT, TOP);
-    textSize(14); text("進化順", 20, 20);
-    
-    let startY = 50;
-    for(let i=0; i<BALL_TYPES.length; i++) {
-        let bx = 30;
-        let by = startY + i * 22; 
-        push(); translate(bx, by); drawCommonBall(i, 8); pop();
-        textAlign(LEFT, CENTER); textSize(10); fill(0);
-        text(BALL_TYPES[i].label, bx + 15, by);
-    }
-  }
-}
-
-function drawTitleScreen() {
-  fill(0); noStroke(); textAlign(CENTER, CENTER);
-  textSize(min(60, width/8)); 
-  text("キュウギゲーム", width / 2, height / 3);
-  textSize(min(20, width/20));
-  text("ボールをくっつけてボウリング玉を目指そう！", width / 2, height / 3 + 60);
-  drawButton(btnStart); drawButton(btnHowTo);
-}
-
-function drawHowToScreen() {
-  fill(0); noStroke(); textAlign(CENTER, CENTER);
-  textSize(40); text("遊び方", width / 2, 80);
-  textSize(min(18, width/25)); textAlign(LEFT, TOP);
-  let msg = 
-    "1. タップ/クリックでボール投下\n" +
-    "2. 同じボールで進化\n" +
-    "3. 赤い線を越えたら終了\n\n" +
-    "【進化順】\n" +
-    "ピンポン → ゴルフ → テニス → \n" +
-    "野球 → ビリヤード → ホッケー → \n" +
-    "ハンド → バレー → サッカー → \n" +
-    "バスケ → ボウリング";
-  let textX = width < 768 ? width * 0.1 : width/2 - 200;
-  text(msg, textX, 130);
-  textAlign(CENTER, CENTER);
-  drawButton(btnBack);
-}
-
-function drawGameOverOverlay() {
-  if (score > highScore) { highScore = score; storeItem('highScore', highScore); }
-  fill(0, 0, 0, 150); rect(width/2, height/2, width, height);
-  fill(255); textAlign(CENTER, CENTER);
-  textSize(50); text("GAME OVER", width/2, height/2 - 40);
-  textSize(30); text("Score: " + score, width/2, height/2 + 20);
-  textSize(20); text("High Score: " + highScore, width/2, height/2 + 60);
-  text("タップしてタイトルへ", width/2, height/2 + 120); 
-}
-
 function drawCommonBall(typeIdx, r) {
   let info = BALL_TYPES[typeIdx];
   push();
   fill(info.color);
   if (info.stroke) { stroke(0); strokeWeight(max(1, r * 0.03)); } else { noStroke(); }
   circle(0, 0, r * 2);
-  drawingContext.save(); drawingContext.beginPath(); drawingContext.arc(0, 0, r, 0, TWO_PI); drawingContext.clip();
+
+  drawingContext.save();
+  drawingContext.beginPath();
+  drawingContext.arc(0, 0, r, 0, TWO_PI);
+  drawingContext.clip();
   if (info.drawFunc) info.drawFunc(r);
   drawingContext.restore();
   pop();
+}
+
+function drawTitleScreen() {
+  fill(0); noStroke(); textSize(60);
+  text("キュウギゲーム", width / 2, height / 3);
+  textSize(20);
+  text("頑張ってボウリング玉を目指そう！", width / 2, height / 3 + 60);
+  drawButton(btnStart); drawButton(btnHowTo);
+}
+
+function drawHowToScreen() {
+  fill(0); noStroke(); textSize(40);
+  text("遊び方", width / 2, 80);
+  textSize(18); textAlign(LEFT, TOP);
+  let msg = 
+    "1. マウスを動かして位置を決め、\n   クリックでボールを落とします。\n" +
+    "2. 同じボール同士をくっつけて\n   進化させてください。\n" +
+    "3. ボールが「赤い点線」を超えて\n   積み上がるとゲームオーバー！\n\n" +
+    "【進化順】\n" +
+    "ピンポン → ゴルフ → テニス → 野球 → \n" +
+    "ビリヤード → ホッケー → ハンド → バレー → \n" +
+    "サッカー → バスケ → ボウリング";
+  text(msg, 100, 130);
+  textAlign(CENTER, CENTER);
+  drawButton(btnBack);
+}
+
+function drawGameScreen() {
+  // 1. 壁
+  fill(100); noStroke(); rectMode(CENTER);
+  for (let w of walls) {
+    rect(w.position.x, w.position.y, w.bounds.max.x - w.bounds.min.x, w.bounds.max.y - w.bounds.min.y);
+  }
+
+  // デッドライン（ゲームオーバーライン）の描画
+  stroke(255, 0, 0); strokeWeight(3);
+  drawingContext.setLineDash([10, 10]);
+  line(WALL_THICKNESS, DEAD_LINE_Y, gameAreaWidth - WALL_THICKNESS, DEAD_LINE_Y);
+  drawingContext.setLineDash([]); // 点線リセット
+
+  // 2. 物理ボール
+  for (let b of balls) {
+    drawPhysicsBall(b);
+  }
+
+  // 3. 投下用ボール（マウス追従）
+  if (canDrop && gameState === "GAME") {
+    let r = BALL_TYPES[nextBallType].r;
+    // マウス位置制限（壁の内側）
+    let dropX = constrain(mouseX, WALL_THICKNESS + r, gameAreaWidth - WALL_THICKNESS - r);
+    
+    // ガイドライン
+    stroke(200); strokeWeight(1);
+    drawingContext.setLineDash([5, 5]);
+    line(dropX, 50, dropX, height); 
+    drawingContext.setLineDash([]);
+
+    push();
+    translate(dropX, 50); // 投下位置は固定(Y=50)
+    drawCommonBall(nextBallType, r);
+    pop();
+  }
+
+  // 4. UI
+  drawUI();
+}
+
+function drawUI() {
+  stroke(0); strokeWeight(1);
+  line(gameAreaWidth, 0, gameAreaWidth, height);
+  noStroke(); fill(0);
+  let uiCenterX = gameAreaWidth + (width - gameAreaWidth)/2;
+  
+  // スコアとハイスコア表示
+  textSize(20); text("SCORE", uiCenterX, 40);
+  textSize(30); text(score, uiCenterX, 75);
+  // ★変更点1：ハイスコアの表示
+  textSize(16); text("HIGH SCORE: " + highScore, uiCenterX, 105);
+
+  // ★変更点2：次に出てくるボールの提示
+  let nextBallInfo = BALL_TYPES[nextBallType];
+  textSize(20); text("NEXT BALL", uiCenterX, 170);
+  
+  // 次のボールのアイコンを表示
+  push();
+  translate(uiCenterX, 220); 
+  // 半分のサイズでアイコンとして表示
+  drawCommonBall(nextBallType, nextBallInfo.r * 0.5); 
+  // ボール名も表示
+  fill(0); textSize(12);
+  text(nextBallInfo.label, 0, nextBallInfo.r * 0.5 + 15);
+  pop();
+  
+  // 進化順リスト
+  textSize(16); text("進化順", uiCenterX, 270); 
+  
+  let startY = 300; // リストの開始位置
+  for(let i=0; i<BALL_TYPES.length; i++) {
+    let info = BALL_TYPES[i];
+    let x = gameAreaWidth + 30;
+    let y = startY + i * 30; // 間隔を詰めて表示 (30px)
+    let iconR = 10; // アイコンサイズを小さく
+    
+    push();
+    translate(x, y);
+    drawCommonBall(i, iconR);
+    pop();
+    
+    fill(0); noStroke(); textAlign(LEFT, CENTER); textSize(12);
+    text(info.label, x + 20, y); 
+  }
+  textAlign(CENTER, CENTER);
+}
+
+function drawGameOverOverlay() {
+  // ★変更点1：ハイスコアの更新と保存
+  if (score > highScore) {
+    highScore = score;
+    storeItem('highScore', highScore);
+  }
+  
+  fill(0, 0, 0, 150); rect(width/2, height/2, width, height);
+  fill(255); textSize(50); text("GAME OVER", width/2, height/2 - 40);
+  textSize(30); text("Score: " + score, width/2, height/2 + 20);
+  // ハイスコア表示をゲームオーバー画面にも追加
+  textSize(20); text("High Score: " + highScore, width/2, height/2 + 50);
+  text("クリックでタイトルへ", width/2, height/2 + 100); 
 }
 
 function drawPhysicsBall(body) {
@@ -463,13 +312,34 @@ function drawPhysicsBall(body) {
   let angle = body.angle;
   let typeIdx = body.ballType;
   let r = BALL_TYPES[typeIdx].r;
-  push(); translate(pos.x, pos.y); rotate(angle); drawCommonBall(typeIdx, r); pop();
+
+  push();
+  translate(pos.x, pos.y);
+  rotate(angle);
+  drawCommonBall(typeIdx, r);
+  pop();
+}
+
+function setupPhysics() {
+  engine = Engine.create();
+  world = engine.world;
+  
+  // 壁の作成（U字型）
+  let ground = Bodies.rectangle(gameAreaWidth/2, height, gameAreaWidth, WALL_THICKNESS*2, { isStatic: true });
+  let leftWall = Bodies.rectangle(0, height/2, WALL_THICKNESS, height, { isStatic: true });
+  let rightWall = Bodies.rectangle(gameAreaWidth, height/2, WALL_THICKNESS, height, { isStatic: true });
+  
+  walls = [ground, leftWall, rightWall];
+  World.add(world, walls);
+  Events.on(engine, 'collisionStart', handleCollisions);
 }
 
 function updatePhysics() {
   Engine.update(engine);
+  
+  // ゲームオーバー判定
   for(let b of balls) {
-    if(!b.isSpawning && b.position.y < deadLineY && Math.abs(b.velocity.y) < 0.2 && Math.abs(b.velocity.x) < 0.2) {
+    if(!b.isSpawning && b.position.y < DEAD_LINE_Y && Math.abs(b.velocity.y) < 0.2 && Math.abs(b.velocity.x) < 0.2) {
        gameState = "GAMEOVER";
     }
   }
@@ -478,7 +348,8 @@ function updatePhysics() {
 function handleCollisions(event) {
   let pairs = event.pairs;
   for (let i = 0; i < pairs.length; i++) {
-    let bodyA = pairs[i].bodyA; let bodyB = pairs[i].bodyB;
+    let bodyA = pairs[i].bodyA;
+    let bodyB = pairs[i].bodyB;
     if (bodyA.label === 'ball' && bodyB.label === 'ball') {
       if (bodyA.ballType === bodyB.ballType) {
         if (bodyA.isRemoved || bodyB.isRemoved) continue;
@@ -502,70 +373,122 @@ function mergeBalls(bodyA, bodyB) {
 
 function createNewBall(x, y, typeIndex, isSpawning) {
   let info = BALL_TYPES[typeIndex];
-  let ball = Bodies.circle(x, y, info.r, { restitution: 0.3, friction: 0.1, density: info.density, label: 'ball' });
-  ball.ballType = typeIndex; ball.isSpawning = isSpawning;
+  let ball = Bodies.circle(x, y, info.r, {
+    restitution: 0.3, 
+    friction: 0.1, 
+    // ★変更点3：密度をボールの種類に応じて設定
+    density: info.density, 
+    label: 'ball'
+  });
+  ball.ballType = typeIndex;
+  ball.isSpawning = isSpawning;
+  
+  // 生成直後の無敵時間
   if(isSpawning) { setTimeout(() => { ball.isSpawning = false; }, 2000); }
-  balls.push(ball); World.add(world, ball);
+  
+  balls.push(ball);
+  World.add(world, ball);
 }
 
-function resetGame() {
-  for (let b of balls) World.remove(world, b);
-  balls = []; score = 0; nextBallType = floor(random(0, 4)); canDrop = false;
+function mouseClicked() {
+  if (gameState === "TITLE") {
+    if (isMouseOver(btnStart)) { 
+      resetGame(); 
+      gameState = "GAME";
+      
+      // ★変更点2：0.2秒後にボール投下を許可する
+      setTimeout(() => { canDrop = true; }, 200); 
+      
+      return; 
+    }
+    if (isMouseOver(btnHowTo)) {
+      gameState = "HOWTO";
+      return; 
+    }
+  } else if (gameState === "HOWTO") {
+    if (isMouseOver(btnBack)) {
+      gameState = "TITLE";
+      return; 
+    }
+  } 
+  
+  // ★重要修正点：GAMEステートかつ投下エリア内のクリックのみ、ボール投下を許可
+  if (gameState === "GAME") { // <-- ステートの確認を追加
+    if (canDrop && mouseX < gameAreaWidth) {
+      dropBall();
+      return; // 投下処理後、ここで処理を終了
+    }
+  } 
+  
+  // ゲームオーバー画面でのクリックはタイトルへ遷移
+  if (gameState === "GAMEOVER") {
+    gameState = "TITLE";
+  }
+}
+
+// touchStarted 関数はそのまま残してください
+function touchStarted() {
+  // mouseClicked と同じロジックを呼び出す
+  if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+    mouseClicked();
+  }
+  return false;
 }
 
 function dropBall() {
   canDrop = false;
   let r = BALL_TYPES[nextBallType].r;
-  let centerX = width / 2;
-  let minX = centerX - gameAreaWidth/2 + wallThickness + r;
-  let maxX = centerX + gameAreaWidth/2 - wallThickness - r;
-  let dropX = constrain(mouseX, minX, maxX);
+  let dropX = constrain(mouseX, WALL_THICKNESS + r, gameAreaWidth - WALL_THICKNESS - r);
   
-  createNewBall(dropX, 80, nextBallType, true);
+  createNewBall(dropX, 50, nextBallType, true);
+  
+  // 次のボール
   nextBallType = floor(random(0, 4));
+  
+  // ★変更点3：次の投下可能までの時間を確認 (800ms)
   setTimeout(() => { canDrop = true; }, 800);
 }
 
-// 入力処理（ボタンの誤反応を防ぐロジック入り）
-function mouseClicked() {
-  if (gameState === "TITLE") {
-    if (isMouseOver(btnStart)) { 
-      resetGame(); gameState = "GAME"; 
-      setTimeout(() => { canDrop = true; }, 500); // 誤操作防止のため少し待つ
-      return; 
-    }
-    if (isMouseOver(btnHowTo)) { gameState = "HOWTO"; return; }
-  } else if (gameState === "HOWTO") {
-    if (isMouseOver(btnBack)) { gameState = "TITLE"; return; }
-  } 
+function resetGame() {
+  for (let b of balls) World.remove(world, b);
+  balls = []; 
+  score = 0; 
+  nextBallType = floor(random(0, 4)); 
   
-  if (gameState === "GAME") {
-    let centerX = width / 2;
-    // 箱の内部（横幅）の範囲内でのみ反応させる
-    if (canDrop && mouseX > centerX - gameAreaWidth/2 && mouseX < centerX + gameAreaWidth/2) {
-      dropBall();
-      return;
-    }
-  } 
-  
-  if (gameState === "GAMEOVER") { gameState = "TITLE"; }
-}
-
-// スマホのタッチ対応
-function touchStarted() {
-  if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) { mouseClicked(); }
-  return false;
+  // ★変更点1：初期状態では投下不可(false)にする
+  canDrop = false; 
 }
 
 function initButtons() {
-  // 初期化は calculateLayout で行うため空でOK
+  btnStart = { x: width/2, y: height/2 + 20, w: 200, h: 50, label: "スタート" };
+  btnHowTo = { x: width/2, y: height/2 + 90, w: 200, h: 50, label: "遊び方" };
+  btnBack  = { x: width/2, y: height - 80, w: 200, h: 50, label: "戻る" };
 }
+
 function drawButton(btn) {
   fill(255); stroke(0); strokeWeight(2); rectMode(CENTER);
   if (isMouseOver(btn)) fill(220);
   rect(btn.x, btn.y, btn.w, btn.h, 10);
   fill(0); noStroke(); textSize(20); text(btn.label, btn.x, btn.y);
 }
+
 function isMouseOver(btn) {
   return mouseX>btn.x-btn.w/2 && mouseX<btn.x+btn.w/2 && mouseY>btn.y-btn.h/2 && mouseY<btn.y+btn.h/2;
 }
+
+// --- タッチイベントの追加 ---
+// スマートフォンでのタッチ操作に対応するために touchStarted を実装
+function touchStarted() {
+  // mouseClicked と同じロジックを呼び出す
+  if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+    mouseClicked();
+  }
+  
+  // スマホでブラウザのスクロールを防ぐため、必ず false を返す
+  return false;
+}
+
+// 既存の mouseClicked 関数（ロジックに変更は不要です）
+// function mouseClicked() {
+//   // ... 既存のロジック
+// }
