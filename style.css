@@ -3,11 +3,26 @@ body {
   padding: 0;
   background-color: #f0f0f0;
   display: flex;
-  justify-content: center;
-  align-items: center;
+  justify-content: center; /* コンテナを水平中央に寄せる */
+  align-items: center; /* コンテナを垂直中央に寄せる */
   height: 100vh;
-  overflow: hidden;
+  overflow: auto; /* 広告が表示されてもスクロールできるように変更 */
   font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+}
+
+#game-container {
+  /* ゲームと広告を縦に並べる設定 */
+  display: flex;
+  flex-direction: column; 
+  align-items: center; /* コンテナ内の要素（ゲームと広告）を中央に寄せる */
+  /* 必要に応じて、垂直中央寄せを調整 */
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+#ad-area {
+  margin-top: 20px; /* ゲーム画面との間にスペースを空ける */
+  text-align: center; /* 広告の画像とテキストを中央に寄せる */
 }
 
 canvas {
